@@ -17,6 +17,7 @@ import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 const Input = () => {
   const [text, setText] = useState("");
   const [img, setImg] = useState(null);
+  const [uploadedImage, setUploadedImage] = useState(null);
 
   const { currentUser } = useContext(AuthContext);
   const { data } = useContext(ChatContext);
@@ -24,27 +25,35 @@ const Input = () => {
   const handleSend = async () => {
     if (img) {
       const storageRef = ref(storage, uuid());
-
       const uploadTask = uploadBytesResumable(storageRef, img);
 
-      uploadTask.on(
-        (error) => {
-          //TODO:Handle Error
-        },
-        () => {
-          getDownloadURL(uploadTask.snapshot.ref).then(async (downloadURL) => {
-            await updateDoc(doc(db, "chats", data.chatId), {
-              messages: arrayUnion({
-                id: uuid(),
-                text,
-                senderId: currentUser.uid,
-                date: Timestamp.now(),
-                img: downloadURL,
-              }),
-            });
-          });
-        }
-      );
+      await new Promise((resolve, reject) => {
+        uploadTask.on(
+          "state_changed",
+          null,
+          (error) => {
+            console.error("Error uploading image:", error);
+            reject(error);
+          },
+          () => {
+            getDownloadURL(uploadTask.snapshot.ref).then(
+              async (downloadURL) => {
+                setUploadedImage(downloadURL);
+                await updateDoc(doc(db, "chats", data.chatId), {
+                  messages: arrayUnion({
+                    id: uuid(),
+                    text,
+                    senderId: currentUser.uid,
+                    date: Timestamp.now(),
+                    img: downloadURL,
+                  }),
+                });
+                resolve();
+              }
+            );
+          }
+        );
+      });
     } else {
       await updateDoc(doc(db, "chats", data.chatId), {
         messages: arrayUnion({
@@ -72,6 +81,7 @@ const Input = () => {
 
     setText("");
     setImg(null);
+    setUploadedImage(null);
   };
   return (
     <div className="input">
@@ -91,7 +101,7 @@ const Input = () => {
         />
         <label htmlFor="file">
           <img src={Img} alt="" />
-          {img && (
+          {uploadedImage && (
             <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8b/Eo_circle_green_white_checkmark.svg/2048px-Eo_circle_green_white_checkmark.svg.png" />
           )}
         </label>
